@@ -1,0 +1,11 @@
+customer_id,age,gender,policy_type,premium_amount,years_with_company,claims_last_3yrs,churn
+1001,43,Female,Life,1200,3,0,No
+1002,37,Male,Auto,750,5,1,No
+1003,55,Male,Health,2100,8,2,No
+1004,29,Female,Auto,680,1,0,Yes
+1005,61,Male,Home,990,12,0,No
+1006,40,Female,Life,1500,6,1,No
+1007,34,Female,Auto,800,2,0,Yes
+1008,50,Male,Home,1100,9,1,No
+1009,28,Female,Health,2300,1,0,Yes
+1010,45,Male,Life,1800,7,2,No

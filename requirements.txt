@@ -1,0 +1,20 @@
+# Core
+streamlit
+pandas
+numpy
+mlflow
+python-dotenv
+
+# AutoML
+autogluon.tabular==1.2
+
+# Explainability
+shap
+matplotlib
+
+# For LLM Genie
+openai
+
+# Optional (for more data/visuals)
+scikit-learn
+joblib

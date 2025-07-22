@@ -1,0 +1,11 @@
+transaction_id,amount,customer_age,location,transaction_type,is_international,num_prev_frauds,is_fraud
+T0001,120.50,34,New York,Online,No,0,No
+T0002,3050.00,52,London,POS,Yes,2,Yes
+T0003,45.75,28,Sydney,Online,No,1,No
+T0004,780.20,40,Paris,POS,Yes,3,Yes
+T0005,33.40,25,Berlin,Online,No,0,No
+T0006,2100.10,60,London,POS,Yes,5,Yes
+T0007,65.00,31,Mumbai,Online,No,0,No
+T0008,520.75,48,Paris,Online,Yes,1,No
+T0009,1199.99,35,New York,POS,No,0,No
+T0010,89.45,29,Tokyo,Online,Yes,0,No
