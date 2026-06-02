@@ -317,16 +317,58 @@ if res:
         parsed = res.get("parsed", {})
         model_dir = res.get("model_dir")
         df_res = res.get("df")
-        if model_dir and df_res is not None:
-            with st.spinner("Generating feature importance..."):
-                fig = get_shap_plot(model_dir, df_res, parsed)
+        target_col = parsed.get("target")
+
+        if df_res is not None and target_col:
+            fig = None
+
+            # Try SHAP / AutoGluon importance first
+            if model_dir:
+                with st.spinner("Generating feature importance..."):
+                    fig = get_shap_plot(model_dir, df_res, parsed)
+
+            # Guaranteed fallback: correlation-based importance (always works)
+            if fig is None:
+                from pipelines.pipeline_builder import create_correlation_plot
+                import matplotlib.pyplot as plt
+                import pandas as pd
+                import numpy as np
+                from sklearn.preprocessing import LabelEncoder
+
+                try:
+                    df_enc = df_res.copy()
+                    for col in df_enc.select_dtypes(include=["object"]).columns:
+                        if col != target_col:
+                            le = LabelEncoder()
+                            df_enc[col] = le.fit_transform(df_enc[col].astype(str))
+                    if df_enc[target_col].dtype == object:
+                        le = LabelEncoder()
+                        df_enc[target_col] = le.fit_transform(df_enc[target_col].astype(str))
+
+                    corr = df_enc.corr()[target_col].abs().drop(target_col).sort_values(ascending=True)
+
+                    fig, ax = plt.subplots(figsize=(9, max(4, len(corr) * 0.5)))
+                    colors = ["#63b3ed" if v >= corr.median() else "#4a5568" for v in corr.values]
+                    ax.barh(corr.index, corr.values, color=colors, alpha=0.85)
+                    ax.set_xlabel("Absolute Correlation with Target", color="white", fontsize=11)
+                    ax.set_title(f"Feature Importance — Correlation with '{target_col}'",
+                                 color="white", fontsize=13, fontweight="bold", pad=14)
+                    ax.tick_params(colors="white")
+                    ax.spines[["top", "right"]].set_visible(False)
+                    ax.spines[["left", "bottom"]].set_color("#4a5568")
+                    fig.patch.set_facecolor("#0d1b2a")
+                    ax.set_facecolor("#0d1b2a")
+                    plt.tight_layout()
+                except Exception as e:
+                    fig = None
+                    st.warning(f"Could not generate feature importance: {e}")
+
             if fig:
                 st.pyplot(fig, use_container_width=True)
-                st.caption("Higher SHAP value = stronger influence on prediction")
-            else:
-                st.warning("Feature importance not available for this model.")
+                st.caption("Blue bars = above-median correlation with target. "
+                           "Longer bar = stronger influence on prediction.")
         else:
-            st.warning("Model directory unavailable.")
+            st.warning("Run the pipeline first to see feature importance.")
 
     with tab_download:
         model_info_path = res.get("model_info_path")
