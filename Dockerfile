@@ -25,23 +25,14 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application source
 COPY . .
 
-# Streamlit configuration — bind to 0.0.0.0 so Azure can reach it
-RUN mkdir -p /root/.streamlit && cat > /root/.streamlit/config.toml <<'EOF'
-[server]
-headless = true
-address = "0.0.0.0"
-port = 8501
-enableCORS = false
-enableXsrfProtection = false
-EOF
-
 # Create directories for model artifacts and MLflow tracking
 RUN mkdir -p models mlruns
 
 EXPOSE 8501
 
-# Health check — Azure App Service uses this to decide when the container is ready
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:8501/_stcore/health || exit 1
+# Health check — Azure Container Apps uses this to decide when the container is ready
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8501/api/health || exit 1
 
-CMD ["streamlit", "run", "ui/minimal_app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+# Run FastAPI + React SPA via uvicorn
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8501"]
