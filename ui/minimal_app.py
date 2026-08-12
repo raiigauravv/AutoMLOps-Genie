@@ -111,20 +111,20 @@ with col2:
             elif not automl_available:
                 st.error(f"AutoML not available: {import_error}")
             else:
-                # Validate prompt against columns
+                # Validate prompt against columns (case-insensitive match)
                 target_column = None
                 if prompt:
+                    col_map = {c.lower(): c for c in df.columns}  # lowercase → real name
                     words = prompt.split()
-                    if "predict" in prompt.lower():
-                        for word in words:
-                            clean_word = word.strip(".,!?").strip("`")
-                            if clean_word in df.columns:
-                                target_column = clean_word
-                                break
-                
+                    for word in words:
+                        clean_word = word.strip(".,!?`").lower()
+                        if clean_word in col_map:
+                            target_column = col_map[clean_word]
+                            break
+
                 if target_column is None:
                     available_cols = ", ".join([f"`{col}`" for col in df.columns])
-                    st.error(f"Please use an exact column name from your data. Available columns: {available_cols}")
+                    st.error(f"Please mention a column name in your prompt. Available columns: {available_cols}")
                 else:
                     # Run AutoML
                     with st.spinner("🔄 Training models... This may take a minute"):

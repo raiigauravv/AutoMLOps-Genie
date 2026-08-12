@@ -1,5 +1,8 @@
 # Core
 streamlit
+fastapi
+uvicorn[standard]
+python-multipart
 pandas
 numpy
 mlflow
@@ -12,9 +15,13 @@ autogluon.tabular==1.2
 shap
 matplotlib
 
-# For LLM Genie
+# LLM Genie (function calling)
 openai
 
 # Optional (for more data/visuals)
 scikit-learn
 joblib
+
+# Testing
+pytest
+pytest-cov
