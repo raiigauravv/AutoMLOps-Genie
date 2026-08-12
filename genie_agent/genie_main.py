@@ -1,54 +1,55 @@
 # 📄 genie_agent/genie_main.py
-# LLM-powered Genie: Parse user prompt via OpenAI Function Calling & launch AutoML pipeline
+# LLM-powered Genie: Parse user prompt via Gemini Function Calling & launch AutoML pipeline
 
 import os
-import json
 import pandas as pd
-from openai import OpenAI
+import google.generativeai as genai
 from dotenv import load_dotenv
 from pipelines.pipeline_builder import run_pipeline
 
 load_dotenv()
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
-# ── OpenAI Function / Tool schema ─────────────────────────────────────────────
-# This is the real OpenAI function-calling API (tools parameter).
+# ── Gemini Function / Tool schema ─────────────────────────────────────────────
+# This is the real Gemini function-calling API (tools parameter).
 # The model is forced to return structured JSON by calling this function,
 # which guarantees type safety and eliminates fragile regex/JSON parsing.
 
 _TOOLS = [
     {
-        "type": "function",
-        "function": {
-            "name": "configure_ml_pipeline",
-            "description": (
-                "Extract the ML pipeline configuration from the user's natural language "
-                "task description. Identify the exact target column to predict and the "
-                "type of ML task required."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "target": {
-                        "type": "string",
-                        "description": (
-                            "The exact column name from the dataset that should be "
-                            "predicted (e.g. 'churn', 'price', 'fraud_label')."
-                        ),
+        "function_declarations": [
+            {
+                "name": "configure_ml_pipeline",
+                "description": (
+                    "Extract the ML pipeline configuration from the user's natural language "
+                    "task description. Identify the exact target column to predict and the "
+                    "type of ML task required."
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "target": {
+                            "type": "string",
+                            "description": (
+                                "The exact column name from the dataset that should be "
+                                "predicted (e.g. 'churn', 'price', 'fraud_label')."
+                            ),
+                        },
+                        "type": {
+                            "type": "string",
+                            "enum": ["classification", "regression"],
+                            "description": (
+                                "ML task type: 'classification' for categorical/discrete "
+                                "targets, 'regression' for continuous numerical targets."
+                            ),
+                        },
                     },
-                    "type": {
-                        "type": "string",
-                        "enum": ["classification", "regression"],
-                        "description": (
-                            "ML task type: 'classification' for categorical/discrete "
-                            "targets, 'regression' for continuous numerical targets."
-                        ),
-                    },
+                    "required": ["target", "type"],
                 },
-                "required": ["target", "type"],
-            },
-        },
+            }
+        ]
     }
 ]
 
@@ -59,10 +60,23 @@ _SYSTEM_PROMPT = (
     "(e.g. predicting price → regression, predicting churn → classification)."
 )
 
+model = genai.GenerativeModel(
+    model_name="gemini-2.0-flash",
+    tools=_TOOLS,
+    system_instruction=_SYSTEM_PROMPT,
+)
+
+_TOOL_CONFIG = {
+    "function_calling_config": {
+        "mode": "ANY",
+        "allowed_function_names": ["configure_ml_pipeline"],
+    }
+}
+
 
 def extract_info_from_prompt(prompt: str) -> dict:
     """
-    Use OpenAI Function Calling to extract pipeline config from a natural-language prompt.
+    Use Gemini Function Calling to extract pipeline config from a natural-language prompt.
 
     Uses the `tools` parameter (real function calling) rather than prompt-engineering
     a JSON response — the model is *forced* to populate the function schema, giving
@@ -71,27 +85,19 @@ def extract_info_from_prompt(prompt: str) -> dict:
     Returns dict with keys: target (str), type (str) — or {"error": ...} on failure.
     """
     try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user",   "content": prompt},
-            ],
-            tools=_TOOLS,
-            tool_choice={"type": "function", "function": {"name": "configure_ml_pipeline"}},
-        )
+        response = model.generate_content(prompt, tool_config=_TOOL_CONFIG)
 
-        # Extract the function call result from the tool_calls list
-        message = response.choices[0].message
-        if not message.tool_calls:
-            return {"error": "Model did not invoke the function — no tool_calls returned."}
+        candidates = response.candidates
+        if not candidates or not candidates[0].content.parts:
+            return {"error": "Model did not invoke the function — no function_call returned."}
 
-        tool_call = message.tool_calls[0]
-        parsed = json.loads(tool_call.function.arguments)
-        return parsed
+        part = candidates[0].content.parts[0]
+        function_call = getattr(part, "function_call", None)
+        if not function_call or not function_call.name:
+            return {"error": "Model did not invoke the function — no function_call returned."}
 
-    except json.JSONDecodeError as e:
-        return {"error": f"Function arguments were not valid JSON: {e}"}
+        return dict(function_call.args)
+
     except Exception as e:
         return {"error": str(e)}
 

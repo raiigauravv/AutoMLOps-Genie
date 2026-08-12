@@ -44,7 +44,7 @@ _lock = threading.Lock()
 def health():
     return {
         "ok": True,
-        "openai_configured": bool(os.getenv("OPENAI_API_KEY")),
+        "gemini_configured": bool(os.getenv("GEMINI_API_KEY")),
     }
 
 

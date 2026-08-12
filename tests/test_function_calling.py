@@ -3,7 +3,6 @@
 #
 # Run with:  pytest tests/test_function_calling.py -v
 
-import json
 import sys
 import os
 import pytest
@@ -13,20 +12,23 @@ from unittest.mock import MagicMock, patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def _mock_tool_response(target: str, task_type: str):
-    """Build a mock OpenAI response that mimics a real function-calling reply."""
-    tool_call = MagicMock()
-    tool_call.function.arguments = json.dumps({"target": target, "type": task_type})
-    tool_call.function.name = "configure_ml_pipeline"
+def _mock_function_call_response(target: str, task_type: str):
+    """Build a mock Gemini response that mimics a real function-calling reply."""
+    function_call = MagicMock()
+    function_call.name = "configure_ml_pipeline"
+    function_call.args = {"target": target, "type": task_type}
 
-    message = MagicMock()
-    message.tool_calls = [tool_call]
+    part = MagicMock()
+    part.function_call = function_call
 
-    choice = MagicMock()
-    choice.message = message
+    content = MagicMock()
+    content.parts = [part]
+
+    candidate = MagicMock()
+    candidate.content = content
 
     response = MagicMock()
-    response.choices = [choice]
+    response.candidates = [candidate]
     return response
 
 
@@ -39,8 +41,8 @@ class TestExtractInfoFromPrompt:
         """Classification task is parsed correctly."""
         from genie_agent.genie_main import extract_info_from_prompt
 
-        with patch("genie_agent.genie_main.client") as mock_client:
-            mock_client.chat.completions.create.return_value = _mock_tool_response(
+        with patch("genie_agent.genie_main.model") as mock_model:
+            mock_model.generate_content.return_value = _mock_function_call_response(
                 "churn", "classification"
             )
             result = extract_info_from_prompt("Predict customer churn using all features")
@@ -52,8 +54,8 @@ class TestExtractInfoFromPrompt:
         """Regression task is parsed correctly."""
         from genie_agent.genie_main import extract_info_from_prompt
 
-        with patch("genie_agent.genie_main.client") as mock_client:
-            mock_client.chat.completions.create.return_value = _mock_tool_response(
+        with patch("genie_agent.genie_main.model") as mock_model:
+            mock_model.generate_content.return_value = _mock_function_call_response(
                 "price", "regression"
             )
             result = extract_info_from_prompt("Forecast insurance premium price")
@@ -65,8 +67,8 @@ class TestExtractInfoFromPrompt:
         """Fraud label (binary classification) is parsed correctly."""
         from genie_agent.genie_main import extract_info_from_prompt
 
-        with patch("genie_agent.genie_main.client") as mock_client:
-            mock_client.chat.completions.create.return_value = _mock_tool_response(
+        with patch("genie_agent.genie_main.model") as mock_model:
+            mock_model.generate_content.return_value = _mock_function_call_response(
                 "is_fraud", "classification"
             )
             result = extract_info_from_prompt("Build a fraud detection classifier on is_fraud")
@@ -75,68 +77,71 @@ class TestExtractInfoFromPrompt:
         assert result["type"] == "classification"
 
     def test_returns_error_when_no_tool_calls(self):
-        """Returns an error dict when the model returns no tool_calls."""
+        """Returns an error dict when the model returns no function_call."""
         from genie_agent.genie_main import extract_info_from_prompt
 
-        message = MagicMock()
-        message.tool_calls = []          # empty — model didn't call the function
+        part = MagicMock()
+        part.function_call = None
 
-        choice = MagicMock()
-        choice.message = message
+        content = MagicMock()
+        content.parts = [part]
+
+        candidate = MagicMock()
+        candidate.content = content
 
         response = MagicMock()
-        response.choices = [choice]
+        response.candidates = [candidate]
 
-        with patch("genie_agent.genie_main.client") as mock_client:
-            mock_client.chat.completions.create.return_value = response
+        with patch("genie_agent.genie_main.model") as mock_model:
+            mock_model.generate_content.return_value = response
             result = extract_info_from_prompt("Some ambiguous prompt")
 
         assert "error" in result
 
     def test_returns_error_on_api_exception(self):
-        """Returns an error dict when the OpenAI API raises an exception."""
+        """Returns an error dict when the Gemini API raises an exception."""
         from genie_agent.genie_main import extract_info_from_prompt
 
-        with patch("genie_agent.genie_main.client") as mock_client:
-            mock_client.chat.completions.create.side_effect = Exception("API timeout")
+        with patch("genie_agent.genie_main.model") as mock_model:
+            mock_model.generate_content.side_effect = Exception("API timeout")
             result = extract_info_from_prompt("Predict target column")
 
         assert "error" in result
         assert "API timeout" in result["error"]
 
     def test_uses_tools_parameter(self):
-        """Verify the API call is made with tools= (real function calling, not plain chat)."""
+        """Verify the model call is made with tool_config (real function calling, not plain chat)."""
         from genie_agent.genie_main import extract_info_from_prompt
 
-        with patch("genie_agent.genie_main.client") as mock_client:
-            mock_client.chat.completions.create.return_value = _mock_tool_response(
+        with patch("genie_agent.genie_main.model") as mock_model:
+            mock_model.generate_content.return_value = _mock_function_call_response(
                 "label", "classification"
             )
             extract_info_from_prompt("Predict label")
 
-        call_kwargs = mock_client.chat.completions.create.call_args.kwargs
-        assert "tools" in call_kwargs, "Must use the tools= parameter for function calling"
-        assert "tool_choice" in call_kwargs, "Must force the model to call the function"
+        call_kwargs = mock_model.generate_content.call_args.kwargs
+        assert "tool_config" in call_kwargs, "Must use tool_config to force function calling"
+        assert call_kwargs["tool_config"]["function_calling_config"]["mode"] == "ANY"
 
     def test_tool_choice_forces_correct_function(self):
-        """Verify tool_choice forces the configure_ml_pipeline function."""
+        """Verify tool_config forces the configure_ml_pipeline function."""
         from genie_agent.genie_main import extract_info_from_prompt
 
-        with patch("genie_agent.genie_main.client") as mock_client:
-            mock_client.chat.completions.create.return_value = _mock_tool_response(
+        with patch("genie_agent.genie_main.model") as mock_model:
+            mock_model.generate_content.return_value = _mock_function_call_response(
                 "target", "regression"
             )
             extract_info_from_prompt("Predict target")
 
-        call_kwargs = mock_client.chat.completions.create.call_args.kwargs
-        tool_choice = call_kwargs["tool_choice"]
-        assert tool_choice["function"]["name"] == "configure_ml_pipeline"
+        call_kwargs = mock_model.generate_content.call_args.kwargs
+        allowed = call_kwargs["tool_config"]["function_calling_config"]["allowed_function_names"]
+        assert "configure_ml_pipeline" in allowed
 
 
 # ── Integration test: genie_respond ──────────────────────────────────────────
 
 class TestGenieRespond:
-    """End-to-end tests for genie_respond — mocks OpenAI but runs real pipeline logic."""
+    """End-to-end tests for genie_respond — mocks Gemini but runs real pipeline logic."""
 
     def test_missing_target_column_returns_error(self):
         """Returns an error string when the LLM picks a column not in the dataframe."""
@@ -145,8 +150,8 @@ class TestGenieRespond:
 
         df = pd.DataFrame({"age": [25, 30], "salary": [50000, 60000]})
 
-        with patch("genie_agent.genie_main.client") as mock_client:
-            mock_client.chat.completions.create.return_value = _mock_tool_response(
+        with patch("genie_agent.genie_main.model") as mock_model:
+            mock_model.generate_content.return_value = _mock_function_call_response(
                 "nonexistent_column", "classification"
             )
             result_str, parsed, *_ = genie_respond("Predict nonexistent_column", df)
@@ -160,8 +165,8 @@ class TestGenieRespond:
 
         df = pd.DataFrame({"x": [1, 2], "y": [0, 1]})
 
-        with patch("genie_agent.genie_main.client") as mock_client:
-            mock_client.chat.completions.create.side_effect = Exception("Connection refused")
+        with patch("genie_agent.genie_main.model") as mock_model:
+            mock_model.generate_content.side_effect = Exception("Connection refused")
             result_str, parsed, *_ = genie_respond("Predict y", df)
 
         assert "error" in result_str.lower()
