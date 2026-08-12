@@ -61,9 +61,31 @@ jobs:
 
       - name: Build and push image via Cloud Build
         run: |
-          gcloud builds submit \
-            --tag ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE }}:${{ github.sha }} \
-            .
+          IMAGE="${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE }}:${{ github.sha }}"
+
+          # Submit async and poll status instead of streaming logs live —
+          # the GitHub Actions service account isn't a project Viewer/Owner,
+          # so gcloud's live log tailing is blocked even though the build itself succeeds.
+          BUILD_ID=$(gcloud builds submit --tag "$IMAGE" --async --format="value(id)" .)
+          echo "Cloud Build ID: $BUILD_ID"
+
+          for i in $(seq 1 60); do
+            STATUS=$(gcloud builds describe "$BUILD_ID" --format="value(status)")
+            echo "[$i] Build status: $STATUS"
+            case "$STATUS" in
+              SUCCESS) break ;;
+              FAILURE|INTERNAL_ERROR|TIMEOUT|CANCELLED)
+                echo "::error::Cloud Build failed with status $STATUS"
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+
+          if [ "$STATUS" != "SUCCESS" ]; then
+            echo "::error::Cloud Build did not reach SUCCESS within the polling window (last status: $STATUS)"
+            exit 1
+          fi
 
       - name: Deploy to Cloud Run
         run: |
