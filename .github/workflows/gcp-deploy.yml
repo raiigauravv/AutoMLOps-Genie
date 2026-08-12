@@ -28,12 +28,12 @@ jobs:
       - name: Install test dependencies
         run: |
           pip install --upgrade pip
-          pip install pytest pytest-cov openai pandas numpy mlflow python-dotenv
+          pip install pytest pytest-cov google-generativeai pandas numpy mlflow python-dotenv
 
       - name: Run tests
         run: pytest tests/ -v --tb=short --cov=genie_agent --cov=pipelines --cov-report=term-missing
         env:
-          OPENAI_API_KEY: "sk-test-placeholder"   # real calls are mocked in tests
+          GEMINI_API_KEY: "test-placeholder"   # real calls are mocked in tests
 
   # ── Job 2: Deploy to GCP Cloud Run (main branch only) ─────────────────────
   deploy:
@@ -94,7 +94,8 @@ jobs:
             --region ${{ env.REGION }} \
             --platform managed \
             --allow-unauthenticated \
-            --port 8501
+            --port 8501 \
+            --set-env-vars="GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}"
 
       - name: Print live URL
         run: |

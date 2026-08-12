@@ -16,7 +16,7 @@ shap
 matplotlib
 
 # LLM Genie (function calling)
-openai
+google-generativeai
 
 # Optional (for more data/visuals)
 scikit-learn

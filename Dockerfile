@@ -1,9 +1,8 @@
 # Dockerfile — AutoMLOps Genie
-# Builds a container image deployable to Azure Container Apps / Azure App Service.
+# Builds a container image deployable to GCP Cloud Run.
 #
 # Build:   docker build -t automlops-genie .
-# Run:     docker run -p 8501:8501 -e OPENAI_API_KEY=sk-... automlops-genie
-# Azure:   see deploy_azure.sh
+# Run:     docker run -p 8501:8501 -e GEMINI_API_KEY=... automlops-genie
 
 FROM python:3.10-slim
 

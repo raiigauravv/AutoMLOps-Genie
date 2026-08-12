@@ -7,8 +7,8 @@ import os
 import sys
 from unittest.mock import MagicMock
 
-# ── Provide a dummy API key so OpenAI() client init doesn't raise ─────────────
-os.environ.setdefault("OPENAI_API_KEY", "sk-test-placeholder-key-for-tests")
+# ── Provide a dummy API key for Gemini client construction in tests ───────────
+os.environ.setdefault("GEMINI_API_KEY", "test-placeholder-key-for-tests")
 
 # ── Stub out autogluon before pipeline_builder is imported ───────────────────
 _autogluon_stub = MagicMock()
