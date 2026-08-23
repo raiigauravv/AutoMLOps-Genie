@@ -60,8 +60,14 @@ _SYSTEM_PROMPT = (
     "(e.g. predicting price → regression, predicting churn → classification)."
 )
 
+# Ordered by preference; gemini-2.0-flash was retired by Google. The 404 for
+# a retired model only surfaces when generate_content() is actually called
+# (GenerativeModel() itself never hits the API), so extract_info_from_prompt
+# falls back to the next candidate on a 404 instead of failing outright.
+_CANDIDATE_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash-001", "gemini-1.5-flash"]
+
 model = genai.GenerativeModel(
-    model_name="gemini-2.0-flash",
+    model_name=_CANDIDATE_MODELS[0],
     tools=_TOOLS,
     system_instruction=_SYSTEM_PROMPT,
 )
@@ -84,22 +90,33 @@ def extract_info_from_prompt(prompt: str) -> dict:
 
     Returns dict with keys: target (str), type (str) — or {"error": ...} on failure.
     """
-    try:
-        response = model.generate_content(prompt, tool_config=_TOOL_CONFIG)
+    last_error = None
+    for name in [None] + _CANDIDATE_MODELS[1:]:
+        active_model = model if name is None else genai.GenerativeModel(
+            model_name=name, tools=_TOOLS, system_instruction=_SYSTEM_PROMPT
+        )
+        try:
+            response = active_model.generate_content(prompt, tool_config=_TOOL_CONFIG)
 
-        candidates = response.candidates
-        if not candidates or not candidates[0].content.parts:
-            return {"error": "Model did not invoke the function — no function_call returned."}
+            candidates = response.candidates
+            if not candidates or not candidates[0].content.parts:
+                return {"error": "Model did not invoke the function — no function_call returned."}
 
-        part = candidates[0].content.parts[0]
-        function_call = getattr(part, "function_call", None)
-        if not function_call or not function_call.name:
-            return {"error": "Model did not invoke the function — no function_call returned."}
+            part = candidates[0].content.parts[0]
+            function_call = getattr(part, "function_call", None)
+            if not function_call or not function_call.name:
+                return {"error": "Model did not invoke the function — no function_call returned."}
 
-        return dict(function_call.args)
+            return dict(function_call.args)
 
-    except Exception as e:
-        return {"error": str(e)}
+        except Exception as e:
+            last_error = e
+            # 404 means this model name is retired/unavailable — try the next candidate.
+            if "404" in str(e) or "not found" in str(e).lower():
+                continue
+            return {"error": str(e)}
+
+    return {"error": f"All candidate Gemini models failed: {last_error}"}
 
 
 def genie_respond(prompt: str, df: pd.DataFrame):
