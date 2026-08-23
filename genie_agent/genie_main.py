@@ -80,6 +80,29 @@ _TOOL_CONFIG = {
 }
 
 
+def _is_retired_model_error(e: Exception) -> bool:
+    return "404" in str(e) or "not found" in str(e).lower()
+
+
+def _live_fallback_model_names() -> list:
+    """
+    Ask the Gemini API which models it actually supports right now, for use only
+    after every hardcoded candidate above has 404'd. Hardcoded model names go
+    stale as Google retires them (this has now happened three times), so this
+    is the one source of truth that can't drift out of date.
+    """
+    try:
+        names = [
+            m.name.split("/")[-1]
+            for m in genai.list_models()
+            if "generateContent" in m.supported_generation_methods
+        ]
+        names.sort(key=lambda n: "flash" not in n)  # prefer flash (cheaper/faster)
+        return [n for n in names if n not in _CANDIDATE_MODELS]
+    except Exception:
+        return []
+
+
 def extract_info_from_prompt(prompt: str) -> dict:
     """
     Use Gemini Function Calling to extract pipeline config from a natural-language prompt.
@@ -91,7 +114,12 @@ def extract_info_from_prompt(prompt: str) -> dict:
     Returns dict with keys: target (str), type (str) — or {"error": ...} on failure.
     """
     last_error = None
-    for name in [None] + _CANDIDATE_MODELS[1:]:
+    names_to_try = [None] + _CANDIDATE_MODELS[1:]
+    tried_live_fallback = False
+    i = 0
+    while i < len(names_to_try):
+        name = names_to_try[i]
+        i += 1
         active_model = model if name is None else genai.GenerativeModel(
             model_name=name, tools=_TOOLS, system_instruction=_SYSTEM_PROMPT
         )
@@ -111,10 +139,14 @@ def extract_info_from_prompt(prompt: str) -> dict:
 
         except Exception as e:
             last_error = e
-            # 404 means this model name is retired/unavailable — try the next candidate.
-            if "404" in str(e) or "not found" in str(e).lower():
-                continue
-            return {"error": str(e)}
+            if not _is_retired_model_error(e):
+                return {"error": str(e)}
+            # Every hardcoded candidate is retired — ask the API what's live instead
+            # of failing outright.
+            if i == len(names_to_try) and not tried_live_fallback:
+                tried_live_fallback = True
+                names_to_try.extend(_live_fallback_model_names())
+            continue
 
     return {"error": f"All candidate Gemini models failed: {last_error}"}
 

@@ -137,6 +137,61 @@ class TestExtractInfoFromPrompt:
         allowed = call_kwargs["tool_config"]["function_calling_config"]["allowed_function_names"]
         assert "configure_ml_pipeline" in allowed
 
+    def test_falls_back_to_live_model_list_when_all_candidates_retired(self):
+        """
+        If every hardcoded candidate model 404s (Google retired it), extract_info_from_prompt
+        should ask the API which models are actually live right now rather than giving up —
+        this is the exact failure mode that broke the deployed demo three times in a row.
+        """
+        from genie_agent import genie_main
+        from genie_agent.genie_main import extract_info_from_prompt
+
+        retired = Exception("404 models/whatever is not found for API version v1beta")
+        live_model = MagicMock()
+        live_model.generate_content.return_value = _mock_function_call_response(
+            "churn", "classification"
+        )
+
+        live_info = MagicMock()
+        live_info.name = "models/gemini-9.0-flash"
+        live_info.supported_generation_methods = ["generateContent"]
+
+        def fake_generative_model(model_name, **kwargs):
+            if model_name == "gemini-9.0-flash":
+                return live_model
+            m = MagicMock()
+            m.generate_content.side_effect = retired
+            return m
+
+        with patch("genie_agent.genie_main.model") as mock_model, \
+             patch.object(genie_main.genai, "GenerativeModel", side_effect=fake_generative_model), \
+             patch.object(genie_main.genai, "list_models", return_value=[live_info]):
+            mock_model.generate_content.side_effect = retired
+            result = extract_info_from_prompt("Predict customer churn")
+
+        assert result == {"target": "churn", "type": "classification"}
+
+    def test_returns_error_when_live_fallback_also_fails(self):
+        """If even the live model list can't produce a working model, surface the last error."""
+        from genie_agent import genie_main
+        from genie_agent.genie_main import extract_info_from_prompt
+
+        retired = Exception("404 models/whatever is not found for API version v1beta")
+
+        def fake_generative_model(model_name, **kwargs):
+            m = MagicMock()
+            m.generate_content.side_effect = retired
+            return m
+
+        with patch("genie_agent.genie_main.model") as mock_model, \
+             patch.object(genie_main.genai, "GenerativeModel", side_effect=fake_generative_model), \
+             patch.object(genie_main.genai, "list_models", return_value=[]):
+            mock_model.generate_content.side_effect = retired
+            result = extract_info_from_prompt("Predict customer churn")
+
+        assert "error" in result
+        assert "All candidate Gemini models failed" in result["error"]
+
 
 # ── Integration test: genie_respond ──────────────────────────────────────────
 
