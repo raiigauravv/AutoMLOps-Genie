@@ -80,22 +80,47 @@ _TOOL_CONFIG = {
 }
 
 
+# Model names containing any of these are non-text-output variants (text-to-speech,
+# image/video generation, embeddings, etc). They can still list "generateContent" as a
+# supported method while only accepting non-TEXT response modalities, so name-based
+# exclusion is needed on top of the method check.
+_NON_TEXT_NAME_MARKERS = (
+    "tts", "audio", "image", "vision", "embedding", "aqa", "video", "imagen", "veo",
+)
+
+
 def _is_retired_model_error(e: Exception) -> bool:
-    return "404" in str(e) or "not found" in str(e).lower()
+    msg = str(e).lower()
+    return (
+        "404" in msg
+        or "not found" in msg
+        or "response modalities" in msg  # e.g. a TTS-only model rejecting TEXT output
+    )
 
 
 def _live_fallback_model_names() -> list:
     """
     Ask the Gemini API which models it actually supports right now, for use only
-    after every hardcoded candidate above has 404'd. Hardcoded model names go
-    stale as Google retires them (this has now happened three times), so this
-    is the one source of truth that can't drift out of date.
+    after every hardcoded candidate above has failed. Hardcoded model names go
+    stale as Google retires them (this has happened repeatedly), so this is the
+    one source of truth that can't drift out of date.
+
+    ListModels' supported_generation_methods can say "generateContent" for models
+    that only produce audio/image output (e.g. TTS models) — that method name
+    covers the endpoint, not the response modality — so name-based filtering
+    excludes those before they're ever tried, and extract_info_from_prompt also
+    treats a modality-mismatch error as retryable in case a non-text model slips
+    through this filter anyway.
     """
     try:
         names = [
             m.name.split("/")[-1]
             for m in genai.list_models()
             if "generateContent" in m.supported_generation_methods
+        ]
+        names = [
+            n for n in names
+            if not any(marker in n.lower() for marker in _NON_TEXT_NAME_MARKERS)
         ]
         names.sort(key=lambda n: "flash" not in n)  # prefer flash (cheaper/faster)
         return [n for n in names if n not in _CANDIDATE_MODELS]

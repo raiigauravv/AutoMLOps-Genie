@@ -192,6 +192,91 @@ class TestExtractInfoFromPrompt:
         assert "error" in result
         assert "All candidate Gemini models failed" in result["error"]
 
+    def test_live_fallback_excludes_non_text_models_by_name(self):
+        """
+        ListModels' supported_generation_methods can say "generateContent" for a
+        TTS/image/embedding model too (the method covers the endpoint, not the
+        response modality) — a live TTS model actually got picked this way and
+        broke the deployed demo with a 400 'response modalities' error. The
+        fallback name list must exclude those before they're ever tried.
+        """
+        from genie_agent import genie_main
+        from genie_agent.genie_main import extract_info_from_prompt
+
+        retired = Exception("404 models/whatever is not found for API version v1beta")
+
+        tts_info = MagicMock()
+        tts_info.name = "models/gemini-2.5-flash-preview-tts"
+        tts_info.supported_generation_methods = ["generateContent"]
+
+        text_info = MagicMock()
+        text_info.name = "models/gemini-9.0-flash"
+        text_info.supported_generation_methods = ["generateContent"]
+
+        text_model = MagicMock()
+        text_model.generate_content.return_value = _mock_function_call_response(
+            "churn", "classification"
+        )
+
+        called_with = []
+
+        def fake_generative_model(model_name, **kwargs):
+            called_with.append(model_name)
+            if model_name == "gemini-9.0-flash":
+                return text_model
+            m = MagicMock()
+            m.generate_content.side_effect = retired
+            return m
+
+        with patch("genie_agent.genie_main.model") as mock_model, \
+             patch.object(genie_main.genai, "GenerativeModel", side_effect=fake_generative_model), \
+             patch.object(genie_main.genai, "list_models", return_value=[tts_info, text_info]):
+            mock_model.generate_content.side_effect = retired
+            result = extract_info_from_prompt("Predict customer churn")
+
+        assert result == {"target": "churn", "type": "classification"}
+        assert "gemini-2.5-flash-preview-tts" not in called_with
+
+    def test_modality_mismatch_error_is_retried_not_fatal(self):
+        """
+        If a non-text model slips past the name filter anyway, Gemini rejects it with
+        a 400 'response modalities' error (not a 404) — that must still be treated as
+        retryable, not returned as a fatal error on the first bad candidate.
+        """
+        from genie_agent import genie_main
+        from genie_agent.genie_main import extract_info_from_prompt
+
+        retired = Exception("404 models/whatever is not found for API version v1beta")
+        modality_error = Exception(
+            "400 The requested combination of response modalities (TEXT) is not "
+            "supported by the model. models/gemini-2.5-flash-preview-tts accepts "
+            "the following combination of response modalities: * AUDIO"
+        )
+
+        good_info = MagicMock()
+        good_info.name = "models/gemini-9.0-flash"
+        good_info.supported_generation_methods = ["generateContent"]
+
+        good_model = MagicMock()
+        good_model.generate_content.return_value = _mock_function_call_response(
+            "churn", "classification"
+        )
+
+        def fake_generative_model(model_name, **kwargs):
+            if model_name == "gemini-9.0-flash":
+                return good_model
+            m = MagicMock()
+            m.generate_content.side_effect = modality_error
+            return m
+
+        with patch("genie_agent.genie_main.model") as mock_model, \
+             patch.object(genie_main.genai, "GenerativeModel", side_effect=fake_generative_model), \
+             patch.object(genie_main.genai, "list_models", return_value=[good_info]):
+            mock_model.generate_content.side_effect = retired
+            result = extract_info_from_prompt("Predict customer churn")
+
+        assert result == {"target": "churn", "type": "classification"}
+
 
 # ── Integration test: genie_respond ──────────────────────────────────────────
 
