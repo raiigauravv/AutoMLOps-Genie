@@ -61,11 +61,11 @@ async def analyze(
         raise HTTPException(400, f"Could not parse CSV: {e}")
 
     job_id = str(uuid.uuid4())[:8]
-    _set(job_id, {"status": "running", "progress": 5, "stage": "Parsing prompt with GPT function calling…"})
+    _set(job_id, {"status": "running", "progress": 5, "stage": "Parsing prompt with Gemini function calling…"})
 
     def _run():
         try:
-            _set(job_id, {"progress": 10, "stage": "GPT function calling — extracting ML config…"})
+            _set(job_id, {"progress": 10, "stage": "Gemini function calling — extracting ML config…"})
 
             result, parsed, model_info_path, leaderboard, model_dir = genie_respond(prompt, df)
 
@@ -177,6 +177,11 @@ def _set(job_id: str, patch: dict):
             _jobs[job_id] = {}
         _jobs[job_id].update(patch)
 
+
+# ── Serve sample datasets ─────────────────────────────────────────────────────
+data_dir = Path(__file__).parent / "data"
+if data_dir.exists():
+    app.mount("/data", StaticFiles(directory=str(data_dir)), name="data")
 
 # ── Serve React SPA ───────────────────────────────────────────────────────────
 frontend_dir = Path(__file__).parent / "frontend"
