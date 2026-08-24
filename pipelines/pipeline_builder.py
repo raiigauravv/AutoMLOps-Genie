@@ -121,8 +121,12 @@ def run_pipeline(df: pd.DataFrame, target_col: str, task_type: str = None):
     if target_col not in df.columns:
         raise ValueError(f"Target column '{target_col}' not found in dataset")
     
-    if df[target_col].isna().sum() > 0:
-        print(f"Warning: Target column has {df[target_col].isna().sum()} missing values")
+    missing_target_count = df[target_col].isna().sum()
+    if missing_target_count > 0:
+        # AutoGluon rejects any non-finite label outright, so rows with no label
+        # can't be trained on — drop them rather than letting fit() hard-fail.
+        print(f"Warning: dropping {missing_target_count} rows with missing target values")
+        df = df.dropna(subset=[target_col]).reset_index(drop=True)
 
     X = df.drop(columns=[target_col])
     y = df[target_col]

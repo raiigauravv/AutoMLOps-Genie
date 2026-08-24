@@ -107,6 +107,34 @@ class TestTaskTypeDetection:
         args, kwargs = mock_pred.call_args
         assert kwargs.get("problem_type") == "regression"
 
+    def test_rows_with_missing_target_are_dropped_before_training(self, binary_classification_df):
+        """
+        AutoGluon hard-fails with 'train dataset label column cannot contain
+        non-finite values' if any row has a NaN label — this broke a real upload
+        (a Netflix titles CSV with some missing 'rating' values). Rows with a
+        missing target must be dropped before predictor.fit() ever sees them.
+        """
+        from pipelines.pipeline_builder import run_pipeline
+
+        df_with_gaps = binary_classification_df.copy()
+        df_with_gaps.loc[[0, 5, 10], "churn"] = np.nan
+
+        with patch("pipelines.pipeline_builder.TabularPredictor") as mock_pred:
+            instance = MagicMock()
+            mock_pred.return_value = instance
+            instance.fit.return_value = instance
+            instance.leaderboard.return_value = pd.DataFrame(
+                {"model": ["GBM"], "score_val": [0.85]}
+            )
+            instance.evaluate.return_value = {"accuracy": 0.85}
+
+            with patch("pipelines.pipeline_builder.mlflow"):
+                run_pipeline(df_with_gaps, target_col="churn")
+
+        fit_call_df = instance.fit.call_args.args[0]
+        assert fit_call_df["churn"].isna().sum() == 0
+        assert len(fit_call_df) == len(df_with_gaps) - 3
+
 
 # ── Unit tests: MLflow logging ────────────────────────────────────────────────
 
