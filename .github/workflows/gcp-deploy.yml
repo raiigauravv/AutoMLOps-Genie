@@ -95,12 +95,21 @@ jobs:
           # instance can scale to zero and back), so a job that was written on one
           # instance 404s as "Job not found" on another. Pinning to exactly one
           # instance makes that in-memory state consistent across every request.
+          # A single pipeline run (pandas + autogluon.tabular + sklearn fallback
+          # models loaded) peaks at ~734MB RSS measured locally against a real
+          # 10k-row CSV — comfortably over Cloud Run's unspecified default, which
+          # silently OOM-kills the container mid-training. No error ever reaches
+          # the client in that case: the request just hangs forever waiting on a
+          # status update that will never come. --memory gives real headroom;
+          # --cpu=2 also meaningfully speeds up model fitting.
           gcloud run deploy ${{ env.SERVICE }} \
             --image ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE }}:${{ github.sha }} \
             --region ${{ env.REGION }} \
             --platform managed \
             --allow-unauthenticated \
             --port 8501 \
+            --memory=2Gi \
+            --cpu=2 \
             --min-instances=1 \
             --max-instances=1 \
             --set-env-vars="GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}"
