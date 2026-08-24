@@ -168,6 +168,38 @@ class TestTaskTypeDetection:
         assert "description" not in fit_call_df.columns
         assert "plan" in fit_call_df.columns
 
+    def test_numeric_id_columns_are_dropped_too(self, binary_classification_df):
+        """
+        A real upload (Kaggle's Churn_Modelling.csv) has 100%-unique *numeric* ID
+        columns (RowNumber, CustomerId) — the original filter only checked
+        `dtype == object`, so these slipped through untouched since an int64
+        identifier column doesn't match that check at all. Any 100%-unique column
+        must be dropped regardless of dtype.
+        """
+        from pipelines.pipeline_builder import run_pipeline
+
+        df_with_ids = binary_classification_df.copy()
+        n = len(df_with_ids)
+        df_with_ids["RowNumber"] = range(1, n + 1)          # 100% unique, numeric
+        df_with_ids["CustomerId"] = range(10000, 10000 + n)  # 100% unique, numeric
+
+        with patch("pipelines.pipeline_builder.TabularPredictor") as mock_pred:
+            instance = MagicMock()
+            mock_pred.return_value = instance
+            instance.fit.return_value = instance
+            instance.leaderboard.return_value = pd.DataFrame(
+                {"model": ["GBM"], "score_val": [0.85]}
+            )
+            instance.evaluate.return_value = {"accuracy": 0.85}
+
+            with patch("pipelines.pipeline_builder.mlflow"):
+                run_pipeline(df_with_ids, target_col="churn")
+
+        fit_call_df = instance.fit.call_args.args[0]
+        assert "RowNumber" not in fit_call_df.columns
+        assert "CustomerId" not in fit_call_df.columns
+        assert "age" in fit_call_df.columns
+
 
 # ── Unit tests: MLflow logging ────────────────────────────────────────────────
 

@@ -28,7 +28,7 @@ jobs:
       - name: Install test dependencies
         run: |
           pip install --upgrade pip
-          pip install pytest pytest-cov google-generativeai pandas numpy mlflow python-dotenv
+          pip install pytest pytest-cov google-generativeai "pandas<2.3.0,>=2.0.0" numpy mlflow python-dotenv
 
       - name: Run tests
         run: pytest tests/ -v --tb=short --cov=genie_agent --cov=pipelines --cov-report=term-missing

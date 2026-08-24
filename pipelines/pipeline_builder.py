@@ -129,16 +129,23 @@ def run_pipeline(df: pd.DataFrame, target_col: str, task_type: str = None):
         df = df.dropna(subset=[target_col]).reset_index(drop=True)
 
     # Drop near-unique text/identifier columns (free-text descriptions, cast lists,
-    # titles, IDs, raw date strings, etc). AutoGluon's automatic feature engineering
-    # tries to vectorize/one-hot-encode these before it starts respecting time_limit,
-    # which can hang for a very long time on a real-world CSV with such columns and
-    # never produce a result — they also carry no generalizable signal anyway since
-    # almost every value is unique.
+    # titles, raw date strings, etc). AutoGluon's automatic feature engineering tries
+    # to vectorize/one-hot-encode these before it starts respecting time_limit, which
+    # can hang for a very long time on a real-world CSV with such columns — they also
+    # carry no generalizable signal anyway since almost every value is unique.
+    #
+    # The original version of this filter only matched object-dtype columns, so a
+    # 100%-unique *numeric* identifier (RowNumber, CustomerId, ...) slipped through
+    # untouched. is_string_dtype() also covers this more robustly than `== object`
+    # across pandas versions. A 100%-unique column is dropped regardless of dtype —
+    # a numeric ID has no more generalizable signal than a free-text one.
     high_cardinality_cols = [
         col for col in df.columns
         if col != target_col
-        and df[col].dtype == object
-        and df[col].nunique() > 0.5 * len(df)
+        and (
+            df[col].nunique() == len(df)
+            or (pd.api.types.is_string_dtype(df[col]) and df[col].nunique() > 0.5 * len(df))
+        )
     ]
     if high_cardinality_cols:
         print(f"Dropping high-cardinality text/identifier columns: {high_cardinality_cols}")

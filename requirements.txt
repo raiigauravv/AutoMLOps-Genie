@@ -3,7 +3,7 @@ streamlit
 fastapi
 uvicorn[standard]
 python-multipart
-pandas
+pandas<2.3.0,>=2.0.0  # pinned to match autogluon.tabular==1.2's own constraint explicitly
 numpy
 mlflow
 python-dotenv
