@@ -26,7 +26,7 @@ def run_isolated_autogluon(data_file, target_col, problem_type, output_dir):
         # Train model
         predictor.fit(
             df,
-            presets="medium_quality_faster_train",
+            presets="medium_quality",
             time_limit=60,
             num_bag_folds=0,
             num_stack_levels=0

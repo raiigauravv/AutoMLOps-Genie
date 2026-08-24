@@ -182,8 +182,8 @@ def run_pipeline(df: pd.DataFrame, target_col: str, task_type: str = None):
             print(f"Starting model training...")
             df_clean = df.copy()
             predictor.fit(
-                df_clean, 
-                presets="medium_quality_faster_train",
+                df_clean,
+                presets="medium_quality",
                 time_limit=60,
                 num_bag_folds=0,  # Disable bagging to prevent complexity
                 num_stack_levels=0  # Disable stacking
@@ -224,8 +224,8 @@ def run_pipeline(df: pd.DataFrame, target_col: str, task_type: str = None):
                 
                 df_minimal = df.copy()
                 predictor.fit(
-                    df_minimal, 
-                    presets="good_quality_faster_inference",  # Fastest preset
+                    df_minimal,
+                    presets="good_quality",
                     time_limit=30,  # Shorter time
                     hyperparameters={'GBM': {}, 'CAT': {}, 'RF': {}}  # Only basic models
                 )
