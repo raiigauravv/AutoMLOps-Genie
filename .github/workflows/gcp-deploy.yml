@@ -89,12 +89,20 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
+          # Pipeline job state lives in an in-memory dict in server.py, not a shared
+          # store — with the default autoscaling, a POST /api/analyze and its later
+          # GET /api/status polls can land on different instances (or the single
+          # instance can scale to zero and back), so a job that was written on one
+          # instance 404s as "Job not found" on another. Pinning to exactly one
+          # instance makes that in-memory state consistent across every request.
           gcloud run deploy ${{ env.SERVICE }} \
             --image ${{ env.REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE }}:${{ github.sha }} \
             --region ${{ env.REGION }} \
             --platform managed \
             --allow-unauthenticated \
             --port 8501 \
+            --min-instances=1 \
+            --max-instances=1 \
             --set-env-vars="GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}"
 
       - name: Print live URL
