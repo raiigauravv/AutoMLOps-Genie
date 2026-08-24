@@ -135,6 +135,39 @@ class TestTaskTypeDetection:
         assert fit_call_df["churn"].isna().sum() == 0
         assert len(fit_call_df) == len(df_with_gaps) - 3
 
+    def test_high_cardinality_text_columns_are_dropped(self, binary_classification_df):
+        """
+        A real-world CSV (Netflix titles) with free-text columns like 'description'
+        and near-unique identifiers like 'title'/'show_id' caused AutoGluon's
+        automatic feature engineering to hang indefinitely — it tries to
+        vectorize/one-hot-encode those columns before time_limit is ever enforced.
+        Such near-unique object columns must be dropped before predictor.fit().
+        """
+        from pipelines.pipeline_builder import run_pipeline
+
+        df_with_text = binary_classification_df.copy()
+        n = len(df_with_text)
+        df_with_text["show_id"] = [f"id_{i}" for i in range(n)]  # 100% unique
+        df_with_text["description"] = [f"unique free text blob number {i}" for i in range(n)]
+        df_with_text["plan"] = ["basic", "premium"] * (n // 2)  # low cardinality, should stay
+
+        with patch("pipelines.pipeline_builder.TabularPredictor") as mock_pred:
+            instance = MagicMock()
+            mock_pred.return_value = instance
+            instance.fit.return_value = instance
+            instance.leaderboard.return_value = pd.DataFrame(
+                {"model": ["GBM"], "score_val": [0.85]}
+            )
+            instance.evaluate.return_value = {"accuracy": 0.85}
+
+            with patch("pipelines.pipeline_builder.mlflow"):
+                run_pipeline(df_with_text, target_col="churn")
+
+        fit_call_df = instance.fit.call_args.args[0]
+        assert "show_id" not in fit_call_df.columns
+        assert "description" not in fit_call_df.columns
+        assert "plan" in fit_call_df.columns
+
 
 # ── Unit tests: MLflow logging ────────────────────────────────────────────────
 

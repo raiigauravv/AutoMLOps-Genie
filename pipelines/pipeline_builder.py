@@ -128,6 +128,22 @@ def run_pipeline(df: pd.DataFrame, target_col: str, task_type: str = None):
         print(f"Warning: dropping {missing_target_count} rows with missing target values")
         df = df.dropna(subset=[target_col]).reset_index(drop=True)
 
+    # Drop near-unique text/identifier columns (free-text descriptions, cast lists,
+    # titles, IDs, raw date strings, etc). AutoGluon's automatic feature engineering
+    # tries to vectorize/one-hot-encode these before it starts respecting time_limit,
+    # which can hang for a very long time on a real-world CSV with such columns and
+    # never produce a result — they also carry no generalizable signal anyway since
+    # almost every value is unique.
+    high_cardinality_cols = [
+        col for col in df.columns
+        if col != target_col
+        and df[col].dtype == object
+        and df[col].nunique() > 0.5 * len(df)
+    ]
+    if high_cardinality_cols:
+        print(f"Dropping high-cardinality text/identifier columns: {high_cardinality_cols}")
+        df = df.drop(columns=high_cardinality_cols)
+
     X = df.drop(columns=[target_col])
     y = df[target_col]
 
