@@ -206,7 +206,8 @@ def run_pipeline(df: pd.DataFrame, target_col: str, task_type: str = None):
                 presets="medium_quality",
                 time_limit=60,
                 num_bag_folds=0,  # Disable bagging to prevent complexity
-                num_stack_levels=0  # Disable stacking
+                num_stack_levels=0,  # Disable stacking
+                dynamic_stacking=False,  # its own holdout validation step can eat the whole time_limit
             )
             
             print(f"Model training completed successfully")
@@ -247,7 +248,8 @@ def run_pipeline(df: pd.DataFrame, target_col: str, task_type: str = None):
                     df_minimal,
                     presets="good_quality",
                     time_limit=30,  # Shorter time
-                    hyperparameters={'GBM': {}, 'CAT': {}, 'RF': {}}  # Only basic models
+                    hyperparameters={'GBM': {}, 'CAT': {}, 'RF': {}},  # Only basic models
+                    dynamic_stacking=False,  # its own holdout validation step can eat the whole time_limit
                 )
                 
                 print(f"Minimal training completed successfully")
