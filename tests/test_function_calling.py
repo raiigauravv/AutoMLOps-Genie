@@ -197,6 +197,29 @@ class TestExtractInfoFromPrompt:
 
         assert result == {"target": "churn", "type": "classification"}
 
+    def test_retries_on_504_deadline_exceeded(self):
+        """
+        A live run hit '504 Deadline expired before operation could complete' — a
+        transient network/server timeout talking to Gemini, not specific to the
+        model. This must be retried (with the next candidate) rather than failing
+        the whole request outright, since a fresh attempt is very likely to succeed.
+        """
+        from genie_agent import genie_main
+        from genie_agent.genie_main import extract_info_from_prompt
+
+        deadline_exceeded = Exception("504 Deadline expired before operation could complete.")
+        next_model = MagicMock()
+        next_model.generate_content.return_value = _mock_function_call_response(
+            "churn", "classification"
+        )
+
+        with patch("genie_agent.genie_main.model") as mock_model, \
+             patch.object(genie_main.genai, "GenerativeModel", return_value=next_model):
+            mock_model.generate_content.side_effect = deadline_exceeded
+            result = extract_info_from_prompt("Predict customer churn")
+
+        assert result == {"target": "churn", "type": "classification"}
+
     def test_returns_error_when_live_fallback_also_fails(self):
         """If even the live model list can't produce a working model, surface the last error."""
         from genie_agent import genie_main

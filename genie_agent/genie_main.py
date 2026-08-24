@@ -100,6 +100,13 @@ def _is_retryable_model_error(e: Exception) -> bool:
         # retrying against a different one rather than failing outright.
         or "429" in msg
         or "quota" in msg
+        # 503/504: transient server-side unavailability or a deadline expiring
+        # on the call itself — not specific to the model, but a fresh attempt
+        # (same or different model) is very likely to just succeed.
+        or "503" in msg
+        or "504" in msg
+        or "deadline" in msg
+        or "unavailable" in msg
     )
 
 
