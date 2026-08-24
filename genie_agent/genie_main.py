@@ -89,12 +89,17 @@ _NON_TEXT_NAME_MARKERS = (
 )
 
 
-def _is_retired_model_error(e: Exception) -> bool:
+def _is_retryable_model_error(e: Exception) -> bool:
     msg = str(e).lower()
     return (
         "404" in msg
         or "not found" in msg
         or "response modalities" in msg  # e.g. a TTS-only model rejecting TEXT output
+        # Gemini's free tier quota (20 requests/day) is scoped per-model
+        # ("quota_dimensions: model=..."), so a 429 on one model is worth
+        # retrying against a different one rather than failing outright.
+        or "429" in msg
+        or "quota" in msg
     )
 
 
@@ -164,7 +169,7 @@ def extract_info_from_prompt(prompt: str) -> dict:
 
         except Exception as e:
             last_error = e
-            if not _is_retired_model_error(e):
+            if not _is_retryable_model_error(e):
                 return {"error": str(e)}
             # Every hardcoded candidate is retired — ask the API what's live instead
             # of failing outright.

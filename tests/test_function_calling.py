@@ -171,6 +171,32 @@ class TestExtractInfoFromPrompt:
 
         assert result == {"target": "churn", "type": "classification"}
 
+    def test_falls_back_to_a_different_model_on_quota_429(self):
+        """
+        Gemini's free tier caps requests per day *per model* (seen live: '429 ...
+        quota_dimensions { key: "model" value: "gemini-3.7-flash" }'). Since the quota
+        is scoped per-model, a 429 on one candidate is worth retrying against the next
+        candidate rather than failing the whole request outright.
+        """
+        from genie_agent import genie_main
+        from genie_agent.genie_main import extract_info_from_prompt
+
+        quota_exceeded = Exception(
+            '429 You exceeded your current quota... quota_dimensions '
+            '{ key: "model" value: "gemini-2.5-flash" }'
+        )
+        next_model = MagicMock()
+        next_model.generate_content.return_value = _mock_function_call_response(
+            "churn", "classification"
+        )
+
+        with patch("genie_agent.genie_main.model") as mock_model, \
+             patch.object(genie_main.genai, "GenerativeModel", return_value=next_model):
+            mock_model.generate_content.side_effect = quota_exceeded
+            result = extract_info_from_prompt("Predict customer churn")
+
+        assert result == {"target": "churn", "type": "classification"}
+
     def test_returns_error_when_live_fallback_also_fails(self):
         """If even the live model list can't produce a working model, surface the last error."""
         from genie_agent import genie_main
