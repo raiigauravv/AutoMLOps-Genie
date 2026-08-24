@@ -135,7 +135,12 @@ def _live_fallback_model_names() -> list:
             if not any(marker in n.lower() for marker in _NON_TEXT_NAME_MARKERS)
         ]
         names.sort(key=lambda n: "flash" not in n)  # prefer flash (cheaper/faster)
-        return [n for n in names if n not in _CANDIDATE_MODELS]
+        # Cap how many we'll try: if quota is exhausted account-wide (not just for
+        # one model), trying every model the API lists turns a fast, clear error
+        # into a long serial grind that looks exactly like a hang from the client's
+        # side — a small bounded number still gets the resilience benefit for the
+        # common case without that worst case.
+        return [n for n in names if n not in _CANDIDATE_MODELS][:5]
     except Exception:
         return []
 
