@@ -186,11 +186,20 @@ def genie_respond(prompt: str, df: pd.DataFrame):
 
     target = parsed.get("target")
     if target not in df.columns:
-        return (
-            f"Target column '{target}' not found in the uploaded dataset. "
-            f"Available columns: {list(df.columns)}",
-            parsed, None, None, None,
+        # Gemini extracts the target name from natural language, which can drift in
+        # case from the actual CSV header (e.g. "churn" vs "Churn") — match
+        # case-insensitively before giving up, and use the real column name below.
+        case_insensitive_match = next(
+            (col for col in df.columns if col.lower() == str(target).lower()), None
         )
+        if case_insensitive_match is None:
+            return (
+                f"Target column '{target}' not found in the uploaded dataset. "
+                f"Available columns: {list(df.columns)}",
+                parsed, None, None, None,
+            )
+        target = case_insensitive_match
+        parsed["target"] = target
 
     result, model_info_path, leaderboard, model_dir = run_pipeline(
         df, target_col=target, task_type=parsed.get("type")

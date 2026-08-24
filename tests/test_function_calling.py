@@ -298,6 +298,32 @@ class TestGenieRespond:
 
         assert "not found" in result_str.lower()
 
+    def test_target_column_match_is_case_insensitive(self):
+        """
+        Gemini extracts the target name from natural language ("predict customer churn"
+        -> "churn"), which can differ in case from the actual CSV header ("Churn") — this
+        broke the live demo by rejecting a target that was actually right there in the
+        data. genie_respond should resolve it to the real column name and proceed.
+        """
+        import pandas as pd
+        from genie_agent import genie_main
+        from genie_agent.genie_main import genie_respond
+
+        df = pd.DataFrame({"tenure": [1, 2], "Churn": ["Yes", "No"]})
+
+        with patch("genie_agent.genie_main.model") as mock_model, \
+             patch.object(genie_main, "run_pipeline") as mock_run_pipeline:
+            mock_model.generate_content.return_value = _mock_function_call_response(
+                "churn", "classification"
+            )
+            mock_run_pipeline.return_value = ("done", None, None, None)
+            result_str, parsed, *_ = genie_respond("Predict customer churn", df)
+
+        assert "not found" not in result_str.lower()
+        assert parsed["target"] == "Churn"
+        mock_run_pipeline.assert_called_once()
+        assert mock_run_pipeline.call_args.kwargs["target_col"] == "Churn"
+
     def test_error_in_extraction_propagates(self):
         """An extraction error is surfaced in the result string."""
         import pandas as pd

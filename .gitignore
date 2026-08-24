@@ -52,6 +52,7 @@ Thumbs.db
 # MLflow
 mlruns/
 mlartifacts/
+mlflow.db
 
 # Models and outputs
 models/

@@ -12,8 +12,11 @@ from autogluon.tabular import TabularPredictor
 import shap
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import LabelEncoder
-import matplotlib.pyplot as plt
-import numpy as np
+
+# MLflow's plain filesystem store ("mlruns") is deprecated/maintenance-mode in
+# current versions and raises unless MLFLOW_ALLOW_FILE_STORE is set — a SQLite
+# backend is the officially recommended replacement and needs no extra setup.
+mlflow.set_tracking_uri("sqlite:///mlflow.db")
 
 def run_autogluon_isolated(df, target_col, problem_type, save_path):
     """
@@ -112,7 +115,6 @@ def run_pipeline(df: pd.DataFrame, target_col: str, task_type: str = None):
     except:
         pass
     
-    mlflow.set_tracking_uri("mlruns")
     mlflow.set_experiment("AutoMLOps-Genie")
 
     # Validate input data
